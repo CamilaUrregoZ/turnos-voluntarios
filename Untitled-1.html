@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inscripción de Voluntarios</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Librería para generar imagen PNG -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen pb-16">
+
+    <!-- Encabezado -->
+    <header class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
+        <div>
+            <h1 class="text-base font-bold">Turnos de Servicio</h1>
+            <p id="currentMonthLabel" class="text-xs text-blue-100"></p>
+        </div>
+        <button onclick="toggleAdminLogin()" id="adminBtn" class="text-xs bg-blue-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-800 transition">
+            Acceso Admin
+        </button>
+    </header>
+
+    <main class="max-w-md mx-auto p-4 space-y-4">
+
+        <!-- Campo de Nombre -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-2">
+            <label for="volunteerName" class="block text-xs font-bold text-gray-700 uppercase tracking-wide">1. Tu Nombre Completo</label>
+            <input type="text" id="volunteerName" placeholder="Escribe tu nombre aquí..." class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50">
+            <p class="text-[11px] text-gray-500">Escribe tu nombre antes de seleccionar o modificar tus turnos.</p>
+        </section>
+
+        <!-- PANEL DE ADMINISTRADOR -->
+        <div id="adminPanel" class="hidden bg-amber-50 border border-amber-300 p-4 rounded-xl space-y-4 shadow-sm">
+            <div class="flex justify-between items-center border-b border-amber-200 pb-2">
+                <span class="text-xs font-bold text-amber-900 uppercase">Panel de Administración</span>
+                <button onclick="logoutAdmin()" class="text-xs text-red-600 font-semibold underline">Salir de Admin</button>
+            </div>
+
+            <!-- Botón para descargar imagen PNG -->
+            <div>
+                <button onclick="descargarCronogramaImagen()" class="w-full bg-green-600 text-white font-bold py-2.5 rounded-lg text-xs shadow hover:bg-green-700 transition flex items-center justify-center space-x-2">
+                    <span>📥 Descargar Cronograma en Imagen (PNG)</span>
+                </button>
+            </div>
+
+            <!-- Crear Día Especial -->
+            <div class="space-y-2 border-t border-amber-200 pt-3">
+                <p class="text-xs font-bold text-amber-900">Crear Día u Evento Especial:</p>
+                <input type="text" id="specialTitle" placeholder="Nombre del evento (Ej. Sábado Especial)" class="w-full px-3 py-1.5 border rounded text-xs bg-white">
+                <input type="date" id="specialDate" class="w-full px-3 py-1.5 border rounded text-xs bg-white">
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] font-semibold text-gray-600">Horario 1:</label>
+                        <input type="text" id="slotTime1" value="8:00 – 10:00" class="w-full px-2 py-1 border rounded text-xs bg-white">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-semibold text-gray-600">Horario 2:</label>
+                        <input type="text" id="slotTime2" value="10:00 – 12:00" class="w-full px-2 py-1 border rounded text-xs bg-white">
+                    </div>
+                </div>
+                <button onclick="addSpecialDay()" class="w-full bg-amber-700 text-white py-1.5 rounded text-xs font-bold hover:bg-amber-800">Guardar Día Especial</button>
+            </div>
+
+            <!-- Resumen de Inscritos -->
+            <div class="border-t border-amber-200 pt-3">
+                <p class="text-xs font-bold text-amber-900 mb-2">Resumen General:</p>
+                <div id="adminSummary" class="bg-white p-2.5 rounded border border-amber-200 text-xs space-y-2 max-h-48 overflow-y-auto"></div>
+            </div>
+        </div>
+
+        <!-- CONTENEDOR VISIBLE PARA CAPTURAR COMO IMAGEN -->
+        <div id="scheduleCaptureArea" class="bg-white p-2 rounded-xl space-y-4">
+            <div class="text-center pb-2 border-b">
+                <h2 id="captureTitle" class="font-bold text-blue-700 text-sm">CRONOGRAMA DE SERVICIO</h2>
+                <p class="text-[10px] text-gray-500">Fotografía y Pantallas</p>
+            </div>
+            <!-- Lista de Días y Turnos -->
+            <div id="scheduleContainer" class="space-y-4"></div>
+        </div>
+
+        <!-- Botón de Confirmación -->
+        <button onclick="guardarMisTurnos()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm shadow-md hover:bg-blue-700 transition">
+            Confirmar e Inscribir Mis Turnos
+        </button>
+
+    </main>
+
+    <script>
+        // ==========================================
+        // CONFIGURACIÓN DE FIREBASE (GRATUITO)
+        // ==========================================
+        // 1. Ve a https://console.firebase.google.com/ y crea un proyecto gratuito.
+        // 2. Agrega una Web App y copia tus credenciales aquí abajo:
+        const firebaseConfig = {
+            apiKey: "AIzaSyAE1TM0rmbF1nHHnLksEYWljVswOqOPqHg",
+            authDomain: "programacionst-9f5ab.firebaseapp.com",
+            projectId: "programacionst-9f5ab",
+            storageBucket: "programacionst-9f5ab.firebasestorage.app",
+            messagingSenderId: "455029249812",
+            appId: "1:455029249812:web:c269046451e755f3439401"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let isAdmin = localStorage.getItem('is_admin') === 'true';
+        let registrations = {};
+        let customSpecialDays = [];
+
+        // Generar los domingos del mes actual
+        function getSundaysOfCurrentMonth() {
+            const date = new Date();
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            let sundays = [];
+
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            const mesAnioStr = `${monthNames[month]} ${year}`;
+            document.getElementById('currentMonthLabel').innerText = mesAnioStr;
+            document.getElementById('captureTitle').innerText = `CRONOGRAMA DE SERVICIO — ${mesAnioStr.toUpperCase()}`;
+
+            let d = new Date(year, month, 1);
+            while (d.getDay() !== 0) {
+                d.setDate(d.getDate() + 1);
+            }
+
+            while (d.getMonth() === month) {
+                let dayNum = d.getDate();
+                let fechaStr = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+                
+                sundays.push({
+                    id: `dom_${dayNum}_${month}`,
+                    fecha: fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1),
+                    slots: [
+                        { id: `slot_${dayNum}_fot_1`, area: "Fotografía", horario: "8:00 – 10:00", max: 2 },
+                        { id: `slot_${dayNum}_fot_2`, area: "Fotografía", horario: "10:00 – 12:00", max: 2 },
+                        { id: `slot_${dayNum}_pan_1`, area: "Pantallas", horario: "8:00 – 10:00", max: 2 },
+                        { id: `slot_${dayNum}_pan_2`, area: "Pantallas", horario: "10:00 – 12:00", max: 2 }
+                    ]
+                });
+                d.setDate(d.getDate() + 7);
+            }
+            return sundays;
+        }
+
+        // Cargar datos de Firestore en tiempo real
+        function cargarDatosNube() {
+            db.collection("turnos_data").doc("principal").onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    registrations = data.registrations || {};
+                    customSpecialDays = data.specialDays || [];
+                }
+                render();
+            }, (error) => {
+                console.error("Error cargando de Firebase:", error);
+                // Fallback local si Firebase no está configurado aún
+                render();
+            });
+        }
+
+        function render() {
+            const container = document.getElementById('scheduleContainer');
+            container.innerHTML = '';
+
+            const adminPanel = document.getElementById('adminPanel');
+            const adminBtn = document.getElementById('adminBtn');
+            if (isAdmin) {
+                adminPanel.classList.remove('hidden');
+                adminBtn.innerText = "Modo Admin Activo";
+                adminBtn.className = "text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold";
+                renderAdminSummary();
+            } else {
+                adminPanel.classList.add('hidden');
+                adminBtn.innerText = "Acceso Admin";
+                adminBtn.className = "text-xs bg-blue-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-800 transition";
+            }
+
+            const todosLosDias = [...getSundaysOfCurrentMonth(), ...customSpecialDays];
+            const currentName = document.getElementById('volunteerName').value.trim();
+
+            todosLosDias.forEach(dia => {
+                let diaCard = document.createElement('div');
+                diaCard.className = 'bg-white p-3 rounded-xl shadow-sm border border-gray-200 space-y-2';
+
+                let deleteBtn = (isAdmin && dia.isCustom) ? `<button onclick="deleteSpecialDay('${dia.id}')" class="text-xs text-red-500 underline font-semibold">Eliminar día</button>` : '';
+
+                diaCard.innerHTML = `
+                    <div class="flex justify-between items-center border-b pb-1">
+                        <h2 class="font-bold text-blue-700 text-xs">${dia.fecha}</h2>
+                        ${deleteBtn}
+                    </div>
+                `;
+
+                dia.slots.forEach(slot => {
+                    const inscritos = registrations[slot.id] || [];
+                    const yaEstaInscrito = currentName !== "" && inscritos.includes(currentName);
+                    const cupoLleno = inscritos.length >= slot.max && !yaEstaInscrito;
+
+                    let slotRow = document.createElement('div');
+                    slotRow.className = 'flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100';
+
+                    let nombresTexto = inscritos.length > 0 ? inscritos.join(', ') : 'Nadie aún';
+
+                    slotRow.innerHTML = `
+                        <div>
+                            <p class="text-xs font-bold text-gray-800">${slot.area} <span class="font-normal text-gray-500">(${slot.horario})</span></p>
+                            <p class="text-[10px] text-gray-500">Cupos (${inscritos.length}/${slot.max}): <span class="font-medium text-gray-700">${nombresTexto}</span></p>
+                        </div>
+                        <div>
+                            <label class="flex items-center space-x-1.5 cursor-pointer">
+                                <input type="checkbox" data-slot-id="${slot.id}" ${yaEstaInscrito ? 'checked' : ''} ${cupoLleno ? 'disabled' : ''} class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-xs font-semibold ${cupoLleno ? 'text-gray-400' : 'text-gray-700'}">${cupoLleno ? 'Completo' : 'Anotarme'}</span>
+                            </label>
+                        </div>
+                    `;
+                    diaCard.appendChild(slotRow);
+                });
+
+                container.appendChild(diaCard);
+            });
+        }
+
+        // Guardar cambios en Firestore
+        function guardarMisTurnos() {
+            const nombre = document.getElementById('volunteerName').value.trim();
+            if (!nombre) {
+                alert("Escribe tu nombre completo en el paso 1 antes de guardar.");
+                return;
+            }
+
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            
+            checkboxes.forEach(cb => {
+                const slotId = cb.getAttribute('data-slot-id');
+                if (!registrations[slotId]) registrations[slotId] = [];
+
+                const pos = registrations[slotId].indexOf(nombre);
+
+                if (cb.checked && pos === -1) {
+                    if (registrations[slotId].length < 2) {
+                        registrations[slotId].push(nombre);
+                    } else {
+                        alert(`Uno de los turnos seleccionados ya se completó.`);
+                        cb.checked = false;
+                    }
+                } else if (!cb.checked && pos !== -1) {
+                    registrations[slotId].splice(pos, 1);
+                }
+            });
+
+            db.collection("turnos_data").doc("principal").set({
+                registrations: registrations,
+                specialDays: customSpecialDays
+            }, { merge: true }).then(() => {
+                alert("¡Tus turnos han sido guardados en línea con éxito!");
+            }).catch((error) => {
+                alert("Error al guardar: " + error.message);
+            });
+        }
+
+        // Descargar cronograma como imagen PNG
+        function descargarCronogramaImagen() {
+            const captureElement = document.getElementById('scheduleCaptureArea');
+            
+            htmlToImage.toPng(captureElement, { quality: 0.95, backgroundColor: '#ffffff' })
+                .then((dataUrl) => {
+                    const link = document.createElement('a');
+                    link.download = 'cronograma-servicios.png';
+                    link.href = dataUrl;
+                    link.click();
+                })
+                .catch((error) => {
+                    console.error('Error generando la imagen:', error);
+                    alert('No se pudo generar la imagen.');
+                });
+        }
+
+        function renderAdminSummary() {
+            const summaryDiv = document.getElementById('adminSummary');
+            summaryDiv.innerHTML = '';
+            const todosLosDias = [...getSundaysOfCurrentMonth(), ...customSpecialDays];
+            let hayInscritos = false;
+
+            todosLosDias.forEach(dia => {
+                dia.slots.forEach(slot => {
+                    const list = registrations[slot.id] || [];
+                    if (list.length > 0) {
+                        hayInscritos = true;
+                        let item = document.createElement('div');
+                        item.className = 'border-b pb-1 border-gray-100';
+                        item.innerHTML = `<span class="font-bold text-gray-700">${dia.fecha}</span> [${slot.area} - ${slot.horario}]: <span class="text-blue-700 font-medium">${list.join(', ')}</span>`;
+                        summaryDiv.appendChild(item);
+                    }
+                });
+            });
+
+            if (!hayInscritos) {
+                summaryDiv.innerHTML = '<p class="text-gray-400 italic">No hay inscripciones aún.</p>';
+            }
+        }
+
+        function toggleAdminLogin() {
+            if (isAdmin) return;
+            const pin = prompt("Ingresa la clave de Administrador:");
+            if (pin === "1234") {
+                isAdmin = true;
+                localStorage.setItem('is_admin', 'true');
+                render();
+            } else if (pin !== null) {
+                alert("Clave incorrecta.");
+            }
+        }
+
+        function logoutAdmin() {
+            isAdmin = false;
+            localStorage.setItem('is_admin', 'false');
+            render();
+        }
+
+        function addSpecialDay() {
+            const title = document.getElementById('specialTitle').value.trim();
+            const dateVal = document.getElementById('specialDate').value;
+            const t1 = document.getElementById('slotTime1').value.trim() || "8:00 – 10:00";
+            const t2 = document.getElementById('slotTime2').value.trim() || "10:00 – 12:00";
+
+            if (!title || !dateVal) {
+                alert("Indica el título y la fecha del evento.");
+                return;
+            }
+
+            const idCustom = "cust_" + Date.now();
+            const newDay = {
+                id: idCustom,
+                fecha: `${title} (${dateVal})`,
+                isCustom: true,
+                slots: [
+                    { id: `${idCustom}_fot_1`, area: "Fotografía", horario: t1, max: 2 },
+                    { id: `${idCustom}_fot_2`, area: "Fotografía", horario: t2, max: 2 },
+                    { id: `${idCustom}_pan_1`, area: "Pantallas", horario: t1, max: 2 },
+                    { id: `${idCustom}_pan_2`, area: "Pantallas", horario: t2, max: 2 }
+                ]
+            };
+
+            customSpecialDays.push(newDay);
+            
+            db.collection("turnos_data").doc("principal").set({
+                registrations: registrations,
+                specialDays: customSpecialDays
+            }, { merge: true }).then(() => {
+                document.getElementById('specialTitle').value = '';
+                document.getElementById('specialDate').value = '';
+                render();
+            });
+        }
+
+        function deleteSpecialDay(id) {
+            if (confirm("¿Deseas eliminar este evento especial?")) {
+                customSpecialDays = customSpecialDays.filter(d => d.id !== id);
+                db.collection("turnos_data").doc("principal").set({
+                    registrations: registrations,
+                    specialDays: customSpecialDays
+                }, { merge: true }).then(() => render());
+            }
+        }
+
+        window.onload = cargarDatosNube;
+        document.getElementById('volunteerName').addEventListener('input', render);
+    </script>
+</body>
+</html>
